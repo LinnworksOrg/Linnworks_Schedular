@@ -1,0 +1,13 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "SeedSchedule": "0 30 3-6 * * *",
+    "Linnworks__ApplicationId": "<guid>",
+    "Linnworks__ApplicationSecret": "<guid>",
+    "Linnworks__PermanentToken": "<guid>",
+    "Seed__LocationName": "Default",
+    "Seed__Source": "DIRECT"
+  }
+}

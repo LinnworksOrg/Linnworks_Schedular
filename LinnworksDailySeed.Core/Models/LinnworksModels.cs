@@ -68,7 +68,24 @@ public sealed class StockItem
 public sealed class UpdatePurchaseOrderItemResponse
 {
     public PurchaseOrderHeader? PurchaseOrderHeader { get; set; }
+
+    /// <summary>
+    /// Linnworks Add/Update_PurchaseOrderItem returns the line as NewPurchaseOrderItem.
+    /// </summary>
+    public PurchaseOrderItem? NewPurchaseOrderItem { get; set; }
+
+    /// <summary>
+    /// Some older payloads used PurchaseOrderItem for the same line object.
+    /// </summary>
     public PurchaseOrderItem? PurchaseOrderItem { get; set; }
+
+    public PurchaseOrderItem? ResolvedItem => NewPurchaseOrderItem ?? PurchaseOrderItem;
+}
+
+public sealed class PurchaseOrderResponse
+{
+    public PurchaseOrderHeader? PurchaseOrderHeader { get; set; }
+    public List<PurchaseOrderItem> PurchaseOrderItem { get; set; } = new();
 }
 
 public sealed class PurchaseOrderHeader
@@ -108,6 +125,12 @@ public sealed class OrderItem
     public string? ChannelSKU { get; set; }
     public string? Title { get; set; }
     public int Quantity { get; set; }
+    [JsonPropertyName("Qty")]
+    public int Qty
+    {
+        get => Quantity;
+        set => Quantity = value;
+    }
     public double PricePerUnit { get; set; }
     public double Cost { get; set; }
     public double CostIncTax { get; set; }
@@ -141,9 +164,28 @@ public sealed class ChannelOrder
     public double ConversionRate { get; set; } = 1;
     public DateTime ReceivedDate { get; set; }
     public DateTime DispatchBy { get; set; }
-    public DateTime PaidOn { get; set; }
+    public DateTime? PaidOn { get; set; }
+    public double? PostalServiceCost { get; set; }
+    public double? PostalServiceTaxRate { get; set; }
+    public double? PostalServiceDiscount { get; set; }
+    public double? Discount { get; set; }
+    public DiscountType? DiscountType { get; set; }
+    public DiscountTaxType? DiscountTaxType { get; set; }
     public ChannelAddress? BillingAddress { get; set; }
     public ChannelAddress? DeliveryAddress { get; set; }
+}
+
+public enum DiscountType
+{
+    AllEvenly = 0,
+    ItemsThenPostage = 1,
+    PostageThenItems = 2
+}
+
+public enum DiscountTaxType
+{
+    DeductBeforeTax = 0,
+    DeductAfterTax = 1
 }
 
 public enum ChannelOrderState
@@ -185,6 +227,14 @@ public sealed class ChannelOrderItem
     public string? ChannelSKU { get; set; }
     public bool IsService { get; set; }
     public string? ItemTitle { get; set; }
+    public List<ChannelOrderItemTax>? Taxes { get; set; }
+}
+
+public sealed class ChannelOrderItemTax
+{
+    public string TaxType { get; set; } = "VAT";
+    public double TaxValue { get; set; }
+    public bool IsSellerCollected { get; set; } = true;
 }
 
 public sealed class ChannelOrderNote
@@ -223,6 +273,7 @@ public sealed class NewRefundLine
     public string? FreeTextOrNote { get; set; }
     public double Amount { get; set; }
     public int Quantity { get; set; } = 1;
+    public bool? IsFreeText { get; set; }
 }
 
 public sealed class CreateRefundResponse
@@ -285,6 +336,87 @@ public sealed class ChangePurchaseOrderStatusParameter
 {
     public Guid pkPurchaseId { get; set; }
     public string status { get; set; } = "OPEN";
+}
+
+public sealed class DeliverPurchaseItemParameter
+{
+    public Guid pkPurchaseId { get; set; }
+    public Guid pkPurchaseItemId { get; set; }
+    public int Delivered { get; set; }
+    public string? BatchNumber { get; set; }
+    public string? BinRack { get; set; }
+    public int PrioritySequence { get; set; }
+    public string? BatchStatus { get; set; }
+}
+
+public sealed class PrintTemplateHeader
+{
+    public int pkTemplateRowId { get; set; }
+    public Guid TemplateId { get; set; }
+    public string? TemplateType { get; set; }
+    public string? TemplateName { get; set; }
+    public bool Enabled { get; set; }
+    public bool IsDefault { get; set; }
+}
+
+public sealed class DeliverPurchaseOrderItemResponse
+{
+    public PurchaseOrderHeader? PurchaseOrderHeader { get; set; }
+    public PurchaseOrderItem? NewPurchaseOrderItem { get; set; }
+}
+
+public sealed class GetAdditionalCostTypesResponse
+{
+    public List<AdditionalCostType> AdditionalTypes { get; set; } = new();
+}
+
+public sealed class AdditionalCostType
+{
+    public int AdditionalCostTypeId { get; set; }
+    public string? TypeName { get; set; }
+    public bool IsShippingType { get; set; }
+    public bool IsPartialAllocation { get; set; }
+    public bool Print { get; set; }
+    public string? AllocationMethod { get; set; }
+}
+
+public sealed class AddAdditionalCostItem
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public int AdditionalCostTypeId { get; set; }
+    public string Reference { get; set; } = "";
+    public double SubTotalLineCost { get; set; }
+    public double TaxRate { get; set; }
+    public string Currency { get; set; } = "GBP";
+    public double ConversionRate { get; set; } = 1;
+    public bool AllocationLocked { get; set; }
+    public bool Print { get; set; }
+    public string AllocationMethod { get; set; } = "ByValue";
+}
+
+public sealed class GetRefundOptionsRequest
+{
+    public Guid OrderId { get; set; }
+    public int? RefundHeaderId { get; set; }
+}
+
+public sealed class RefundOptionsResponse
+{
+    public bool CanRefund { get; set; }
+    public bool CanRefundAdditionally { get; set; }
+    public bool CanRefundServices { get; set; }
+    public bool CanRefundShipping { get; set; }
+    public bool CanRefundShippingIndependently { get; set; }
+    public bool CanRefundFreeText { get; set; }
+}
+
+public sealed class ReturnRowQty
+{
+    public Guid OrderItemRowId { get; set; }
+    public int Qty { get; set; }
+    public int Refund { get; set; }
+    public string? ReturnItemSKU { get; set; }
+    public string? ReturnItemTitle { get; set; }
 }
 
 public sealed class CurrencyConversionRate

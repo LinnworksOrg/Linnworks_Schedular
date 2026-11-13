@@ -17,11 +17,14 @@ public sealed class DailyRunRecord
     public List<PurchaseOrderRunItem> PurchaseOrders { get; set; } = new();
     public List<OrderRunItem> Orders { get; set; } = new();
     public List<RefundRunItem> Refunds { get; set; } = new();
+    public List<ReturnRunItem> Returns { get; set; } = new();
     public List<string> Errors { get; set; } = new();
 }
 
 public sealed class PurchaseOrderRunItem
 {
+    public string ScenarioId { get; set; } = "";
+    public string AlsoCovers { get; set; } = "";
     public string Reference { get; set; } = "";
     public Guid? PurchaseId { get; set; }
     public string Status { get; set; } = "Pending";
@@ -30,19 +33,38 @@ public sealed class PurchaseOrderRunItem
 
 public sealed class OrderRunItem
 {
+    public string ScenarioId { get; set; } = "";
+    public string AlsoCovers { get; set; } = "";
     public string Reference { get; set; } = "";
     public Guid? OrderId { get; set; }
     public bool Processed { get; set; }
+    public bool ShouldProcess { get; set; } = true;
+    public bool ClearSubSource { get; set; }
+    public double LineAmount { get; set; }
+    public int LineQty { get; set; } = 1;
+    public double Postage { get; set; }
     public string Status { get; set; } = "Pending";
     public string? Error { get; set; }
 }
 
 public sealed class RefundRunItem
 {
+    public string ScenarioId { get; set; } = "";
+    public string AlsoCovers { get; set; } = "";
     public string OrderReference { get; set; } = "";
     public Guid? OrderId { get; set; }
     public int? RefundHeaderId { get; set; }
     public bool Actioned { get; set; }
+    public string Status { get; set; } = "Pending";
+    public string? Error { get; set; }
+}
+
+public sealed class ReturnRunItem
+{
+    public string ScenarioId { get; set; } = "";
+    public string OrderReference { get; set; } = "";
+    public Guid? OrderId { get; set; }
+    public bool Booked { get; set; }
     public string Status { get; set; } = "Pending";
     public string? Error { get; set; }
 }

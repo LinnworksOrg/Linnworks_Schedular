@@ -35,12 +35,16 @@ public sealed class AccountCatalog
         var shippingMethods = await _client.GetShippingMethodsAsync(cancellationToken).ConfigureAwait(false);
         var postalPool = ResolvePostalServices(shippingMethods);
 
-        var items = await LoadStockItemsAsync(location.StockLocationId, cancellationToken).ConfigureAwait(false);
+        var items = await LoadStockItemsAsync(location.StockLocationId, excludeComposites: true, cancellationToken)
+            .ConfigureAwait(false);
         if (items.Count == 0)
         {
             throw new InvalidOperationException(
                 $"No usable stock items were found at location '{location.LocationName}'. The seed needs existing SKUs for purchase orders and orders.");
         }
+
+        var composites = await LoadCompositeItemsAsync(location.StockLocationId, items, cancellationToken)
+            .ConfigureAwait(false);
 
         var customers = await LoadCustomersAsync(cancellationToken).ConfigureAwait(false);
         if (customers.Count == 0)
@@ -53,12 +57,13 @@ public sealed class AccountCatalog
         var currencies = await LoadCurrenciesAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "Catalog resolved. Location={Location}, Suppliers={SupplierCount}, Payments={PaymentCount}, Postal={PostalCount}, Items={ItemCount}, AvailableNow={AvailableCount}, Customers={CustomerCount}, SubSources={SubSourceCount}, Currencies={Currencies}",
+            "Catalog resolved. Location={Location}, Suppliers={SupplierCount}, Payments={PaymentCount}, Postal={PostalCount}, Items={ItemCount}, Composites={CompositeCount}, AvailableNow={AvailableCount}, Customers={CustomerCount}, SubSources={SubSourceCount}, Currencies={Currencies}",
             location.LocationName,
             supplierPool.Count,
             paymentPool.Count,
             postalPool.Count,
             items.Count,
+            composites.Count,
             items.Count(i => i.Available >= 1),
             customers.Count,
             subSources.Count,
@@ -71,6 +76,7 @@ public sealed class AccountCatalog
             PaymentMethods = paymentPool,
             PostalServices = postalPool,
             Items = items,
+            CompositeItems = composites,
             Customers = customers,
             SubSources = subSources,
             Currencies = currencies
@@ -204,7 +210,23 @@ public sealed class AccountCatalog
         return pool;
     }
 
-    private async Task<List<StockItem>> LoadStockItemsAsync(Guid locationId, CancellationToken cancellationToken)
+    private async Task<List<StockItem>> LoadCompositeItemsAsync(
+        Guid locationId,
+        IReadOnlyList<StockItem> nonCompositeItems,
+        CancellationToken cancellationToken)
+    {
+        var known = nonCompositeItems.Select(i => i.StockItemId).ToHashSet();
+        var all = await LoadStockItemsAsync(locationId, excludeComposites: false, cancellationToken)
+            .ConfigureAwait(false);
+        var composites = all.Where(i => !known.Contains(i.StockItemId)).ToList();
+        _logger.LogInformation("Composite SKUs available for ORD-COMPOSITE: {Count}", composites.Count);
+        return composites;
+    }
+
+    private async Task<List<StockItem>> LoadStockItemsAsync(
+        Guid locationId,
+        bool excludeComposites,
+        CancellationToken cancellationToken)
     {
         var items = new List<StockItem>();
         var seen = new HashSet<Guid>();
@@ -213,7 +235,12 @@ public sealed class AccountCatalog
 
         for (var page = 1; page <= maxPages; page++)
         {
-            var result = await _client.GetStockItemsAsync(locationId, page, pageSize, cancellationToken)
+            var result = await _client.GetStockItemsAsync(
+                    locationId,
+                    page,
+                    pageSize,
+                    cancellationToken,
+                    excludeComposites)
                 .ConfigureAwait(false);
             if (result?.Data is null || result.Data.Count == 0)
             {

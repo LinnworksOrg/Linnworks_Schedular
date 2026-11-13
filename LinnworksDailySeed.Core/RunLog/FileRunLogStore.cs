@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace LinnworksDailySeed.RunLog;
 
-public sealed class RunLogStore
+public sealed class FileRunLogStore : IRunLogStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -12,9 +12,9 @@ public sealed class RunLogStore
     };
 
     private readonly SeedOptions _options;
-    private readonly ILogger<RunLogStore> _logger;
+    private readonly ILogger<FileRunLogStore> _logger;
 
-    public RunLogStore(IOptions<SeedOptions> options, ILogger<RunLogStore> logger)
+    public FileRunLogStore(IOptions<SeedOptions> options, ILogger<FileRunLogStore> logger)
     {
         _options = options.Value;
         _logger = logger;
@@ -78,13 +78,6 @@ public sealed class RunLogStore
         File.WriteAllText(path, JsonSerializer.Serialize(state, JsonOptions));
     }
 
-    private string RotationPath()
-    {
-        var directory = Path.GetDirectoryName(GetPathForDate(DateOnly.FromDateTime(DateTime.UtcNow)))!;
-        Directory.CreateDirectory(directory);
-        return Path.Combine(directory, "rotation.json");
-    }
-
     public void Archive(DateOnly date, DailyRunRecord record)
     {
         var path = GetPathForDate(date);
@@ -95,5 +88,12 @@ public sealed class RunLogStore
         var json = JsonSerializer.Serialize(record, JsonOptions);
         File.WriteAllText(archivePath, json);
         _logger.LogInformation("Archived previous run log to {Path}", archivePath);
+    }
+
+    private string RotationPath()
+    {
+        var directory = Path.GetDirectoryName(GetPathForDate(DateOnly.FromDateTime(DateTime.UtcNow)))!;
+        Directory.CreateDirectory(directory);
+        return Path.Combine(directory, "rotation.json");
     }
 }

@@ -4,6 +4,7 @@
 **/runs/
 **/logs/
 appsettings.Local.json
+**/local.settings.json
 *.user
 *.suo
 *.user
