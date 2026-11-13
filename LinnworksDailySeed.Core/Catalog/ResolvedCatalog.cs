@@ -9,6 +9,7 @@ public sealed class ResolvedCatalog
     public required IReadOnlyList<PaymentMethod> PaymentMethods { get; init; }
     public required IReadOnlyList<PostageService> PostalServices { get; init; }
     public required IReadOnlyList<StockItem> Items { get; init; }
+    public required IReadOnlyList<StockItem> CompositeItems { get; init; }
     public required IReadOnlyList<SeedCustomer> Customers { get; init; }
     public required IReadOnlyList<string> SubSources { get; init; }
     public required IReadOnlyList<CurrencyConversionRate> Currencies { get; init; }
@@ -38,6 +39,39 @@ public sealed class ResolvedCatalog
     public PostageService PickPostal(int slot) => PostalServices[slot % PostalServices.Count];
 
     public CurrencyConversionRate PickCurrency(int slot) => Currencies[slot % Currencies.Count];
+
+    public CurrencyConversionRate BaseCurrency()
+    {
+        var rated = Currencies.FirstOrDefault(c => Math.Abs(c.ConversionRate - 1) < 0.0001 && c.ConversionRate > 0);
+        var picked = rated ?? Currencies[0];
+        return picked.ConversionRate > 0
+            ? picked
+            : new CurrencyConversionRate { Currency = picked.Currency, ConversionRate = 1 };
+    }
+
+    public CurrencyConversionRate? NonBaseCurrency(int slot)
+    {
+        var nonBase = Currencies
+            .Where(c => c.ConversionRate > 0 && Math.Abs(c.ConversionRate - 1) > 0.0001)
+            .ToList();
+        if (nonBase.Count == 0)
+        {
+            var first = Currencies[0].Currency;
+            nonBase = Currencies
+                .Where(c => !string.Equals(c.Currency, first, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        if (nonBase.Count == 0)
+        {
+            return null;
+        }
+
+        var picked = nonBase[slot % nonBase.Count];
+        return picked.ConversionRate > 0
+            ? picked
+            : new CurrencyConversionRate { Currency = picked.Currency, ConversionRate = 1 };
+    }
 
     public CurrencyConversionRate RateFor(string? currencyCode, int slot)
     {

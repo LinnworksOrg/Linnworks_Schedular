@@ -96,14 +96,15 @@ public sealed class LinnworksClient
         Guid locationId,
         int pageNumber,
         int entriesPerPage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool excludeComposites = true)
     {
         var body =
             $"keyWord=" +
             $"&locationId={Uri.EscapeDataString(JsonSerializer.Serialize(locationId))}" +
             $"&entriesPerPage={entriesPerPage}" +
             $"&pageNumber={pageNumber}" +
-            $"&excludeComposites=true";
+            $"&excludeComposites={excludeComposites.ToString().ToLowerInvariant()}";
         return PostFormAsync<GenericPagedResult<StockItem>>("Stock/GetStockItems", body, cancellationToken);
     }
 
@@ -123,6 +124,12 @@ public sealed class LinnworksClient
         return PostFormAsync<UpdatePurchaseOrderItemResponse>("PurchaseOrder/Add_PurchaseOrderItem", body, cancellationToken);
     }
 
+    public Task<PurchaseOrderResponse> GetPurchaseOrderAsync(Guid purchaseId, CancellationToken cancellationToken)
+    {
+        var body = "pkPurchaseId=" + Uri.EscapeDataString(purchaseId.ToString());
+        return PostFormAsync<PurchaseOrderResponse>("PurchaseOrder/Get_PurchaseOrder", body, cancellationToken);
+    }
+
     public Task ChangePurchaseOrderStatusAsync(
         ChangePurchaseOrderStatusParameter parameter,
         CancellationToken cancellationToken)
@@ -135,6 +142,61 @@ public sealed class LinnworksClient
     {
         var body = "purchaseId=" + Uri.EscapeDataString(purchaseId.ToString());
         return PostFormAsync("PurchaseOrder/Deliver_PurchaseItemAll", body, cancellationToken);
+    }
+
+    public Task<DeliverPurchaseOrderItemResponse> DeliverPurchaseItemAsync(
+        DeliverPurchaseItemParameter parameter,
+        CancellationToken cancellationToken)
+    {
+        var body = "deliverItemParameter=" + Uri.EscapeDataString(SerializeForForm(parameter));
+        return PostFormAsync<DeliverPurchaseOrderItemResponse>(
+            "PurchaseOrder/Deliver_PurchaseItem",
+            body,
+            cancellationToken);
+    }
+
+    public async Task<List<AdditionalCostType>> GetAdditionalCostTypesAsync(CancellationToken cancellationToken)
+    {
+        var raw = await SendFormAsync("PurchaseOrder/Get_AdditionalCostTypes", "", cancellationToken)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return [];
+        }
+
+        var wrapped = JsonSerializer.Deserialize<GetAdditionalCostTypesResponse>(raw, JsonOptions);
+        if (wrapped?.AdditionalTypes is { Count: > 0 })
+        {
+            return wrapped.AdditionalTypes;
+        }
+
+        if (raw.TrimStart().StartsWith('['))
+        {
+            return JsonSerializer.Deserialize<List<AdditionalCostType>>(raw, JsonOptions) ?? [];
+        }
+
+        _logger.LogWarning(
+            "Get_AdditionalCostTypes returned no AdditionalTypes. Body starts with: {Preview}",
+            raw.Length <= 120 ? raw : raw[..120]);
+        return [];
+    }
+
+    public Task ModifyPurchaseOrderAdditionalCostAsync(
+        Guid purchaseId,
+        IReadOnlyList<AddAdditionalCostItem> itemsToAdd,
+        CancellationToken cancellationToken)
+    {
+        var payload = new
+        {
+            request = new
+            {
+                PurchaseId = purchaseId,
+                itemsToAdd,
+                itemsToUpdate = Array.Empty<object>(),
+                itemsToDelete = Array.Empty<int>()
+            }
+        };
+        return PostJsonAllowEmptyAsync("PurchaseOrder/Modify_AdditionalCost", payload, cancellationToken);
     }
 
     public Task<List<Guid>> CreateOrdersAsync(
@@ -165,6 +227,29 @@ public sealed class LinnworksClient
         return PostFormAsync<List<Guid>>("Orders/SetLabelsPrinted", body, cancellationToken);
     }
 
+    public Task<List<PrintTemplateHeader>> GetInvoiceTemplatesAsync(CancellationToken cancellationToken)
+        => GetAsync<List<PrintTemplateHeader>>(
+            "PrintService/GetTemplateList?templateType=" + Uri.EscapeDataString("Invoice"),
+            cancellationToken);
+
+    public Task CreateInvoicePdfAsync(
+        int templateRowId,
+        IReadOnlyList<Guid> orderIds,
+        CancellationToken cancellationToken)
+    {
+        var payload = new
+        {
+            templateType = "Invoice",
+            templateID = templateRowId,
+            IDs = orderIds,
+            parameters = Array.Empty<object>()
+        };
+        return PostJsonAllowEmptyAsync(
+            "PrintService/CreatePDFfromJobForceTemplate",
+            payload,
+            cancellationToken);
+    }
+
     public Task<ProcessOrderResult> ProcessOrderAsync(
         Guid orderId,
         Guid locationId,
@@ -177,6 +262,71 @@ public sealed class LinnworksClient
             locationId
         };
         return PostJsonAsync<ProcessOrderResult>("Orders/ProcessOrder", payload, cancellationToken);
+    }
+
+    public Task<List<ProcessOrderResult>> ProcessOrdersInBatchAsync(
+        IReadOnlyList<Guid> orderIds,
+        Guid locationId,
+        CancellationToken cancellationToken)
+    {
+        var body =
+            "ordersIds=" + Uri.EscapeDataString(SerializeForForm(orderIds)) +
+            "&locationId=" + locationId;
+        return PostFormAsync<List<ProcessOrderResult>>("Orders/ProcessOrdersInBatch", body, cancellationToken);
+    }
+
+    public Task CancelOrderAsync(
+        Guid orderId,
+        Guid fulfilmentCenter,
+        double refund,
+        string note,
+        CancellationToken cancellationToken)
+    {
+        var body =
+            $"orderId={orderId}" +
+            $"&fulfilmentCenter={fulfilmentCenter}" +
+            $"&refund={refund.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+            $"&note={Uri.EscapeDataString(note)}";
+        return PostFormAsync("Orders/CancelOrder", body, cancellationToken);
+    }
+
+    public Task<RefundOptionsResponse> GetRefundOptionsAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        var payload = new JsonRequestEnvelope<GetRefundOptionsRequest>
+        {
+            Request = new GetRefundOptionsRequest { OrderId = orderId }
+        };
+        return PostJsonAsync<RefundOptionsResponse>("ReturnsRefunds/GetRefundOptions", payload, cancellationToken);
+    }
+
+    public Task CreateReturnAsync(
+        Guid orderId,
+        IReadOnlyList<ReturnRowQty> returnItems,
+        Guid returnLocation,
+        string reason,
+        bool refundLines,
+        CancellationToken cancellationToken)
+    {
+        var rows = returnItems.ToList();
+        if (refundLines)
+        {
+            foreach (var row in rows)
+            {
+                row.Refund = row.Qty;
+            }
+        }
+
+        var body =
+            $"pkOrderId={orderId}" +
+            $"&returnitems={Uri.EscapeDataString(SerializeForForm(rows))}" +
+            $"&returnLocation={returnLocation}" +
+            $"&channelReason={Uri.EscapeDataString("OTHER")}" +
+            $"&channelSubReason={Uri.EscapeDataString(reason)}" +
+            $"&category={Uri.EscapeDataString("Seed")}" +
+            $"&reason={Uri.EscapeDataString(reason)}" +
+            $"&isReturnBooking={false}" +
+            $"&ignoredValidation={true}";
+        return PostFormAsync("ProcessedOrders/CreateReturn", body, cancellationToken);
     }
 
     public async Task SetOrderSubSourceAsync(

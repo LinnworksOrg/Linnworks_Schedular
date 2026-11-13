@@ -1,3 +1,5 @@
 <Solution>
+  <Project Path="LinnworksDailySeed.Core/LinnworksDailySeed.Core.csproj" />
   <Project Path="LinnworksDailySeed/LinnworksDailySeed.csproj" />
+  <Project Path="LinnworksDailySeed.Functions/LinnworksDailySeed.Functions.csproj" />
 </Solution>
